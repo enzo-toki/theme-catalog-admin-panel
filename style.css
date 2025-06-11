@@ -6,17 +6,16 @@ body {
     justify-content: center;
     align-items: center;
     flex-direction: column;
-    margin-top: 50px;
+    padding: 50px 20px;
 }
 
 .card {
     background-color: white;
     padding: 30px;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    max-width: 500px;
+    box-shadow: 0 4px_12px rgba(0, 0, 0, 0.1);
+    max-width: 600px;
     width: 100%;
-    text-align: center;
 }
 
 h1 {
@@ -24,29 +23,65 @@ h1 {
     color: #1a73e8;
 }
 
-input[type="file"] {
-    display: block;
-    margin: 20px auto;
+h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #3c4043;
 }
 
-button {
+hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 30px 0;
+}
+
+.form-group {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #5f6368;
+}
+
+input[type="text"],
+input[type="file"] {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #dadce0;
+    border-radius: 5px;
+    box-sizing: border-box; /* Aggiunto per un padding corretto */
+}
+
+input[type="file"] {
+    padding: 5px;
+}
+
+button[type="submit"] {
     background-color: #1a73e8;
     color: white;
     border: none;
-    padding: 12px 25px;
+    padding: 14px 25px;
     border-radius: 5px;
     font-size: 16px;
     cursor: pointer;
     transition: background-color 0.2s;
+    width: 100%;
+    margin-top: 10px;
 }
 
-button:hover {
+button[type="submit"]:hover {
     background-color: #155ab6;
 }
 
 #upload-status {
     margin-top: 20px;
     font-weight: bold;
+    text-align: center;
 }
 
 .progress-bar-container {
@@ -55,7 +90,7 @@ button:hover {
     border-radius: 4px;
     margin-top: 15px;
     height: 10px;
-    overflow: hidden; /* Nasconde la barra di progresso all'inizio */
+    overflow: hidden;
 }
 
 .progress-bar {
