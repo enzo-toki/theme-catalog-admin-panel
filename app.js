@@ -10,131 +10,115 @@ const firebaseConfig = {
 
 // Inizializza Firebase
 firebase.initializeApp(firebaseConfig);
-
-// Ottieni un riferimento ai servizi di Storage e Firestore
 const storage = firebase.storage();
-const firestore = firebase.firestore(); // Ci servirà nel prossimo futuro
+const firestore = firebase.firestore();
 
-// --- Gestione degli elementi del DOM ---
+// --- Elementi del DOM ---
 const themeForm = document.getElementById('theme-form');
 const themeNameInput = document.getElementById('theme-name');
 const themeCategoryInput = document.getElementById('theme-category');
 const wallpapersInput = document.getElementById('wallpapers-input');
 const ringtonesInput = document.getElementById('ringtones-input');
 const notificationsInput = document.getElementById('notifications-input');
-
 const uploadStatus = document.getElementById('upload-status');
 const progressBar = document.getElementById('progress-bar');
 const submitButton = themeForm.querySelector('button[type="submit"]');
 
+// --- Funzione Helper per l'attesa ---
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // --- LOGICA PRINCIPALE ---
-
-// Aggiungi un listener per il submit dell'intero form
 themeForm.addEventListener('submit', async (e) => {
-    e.preventDefault(); // Impedisce il ricaricamento della pagina
-    
-    // Disabilita il pulsante per evitare doppi click
+    e.preventDefault();
     submitButton.disabled = true;
-    submitButton.textContent = 'Caricamento in corso...';
+    submitButton.textContent = 'Caricamento file...';
     
-    const themeName = themeNameInput.value;
-    const themeCategory = themeCategoryInput.value;
-
-    if (!themeName || !themeCategory) {
-        uploadStatus.textContent = 'Per favore, compila nome e categoria del tema.';
-        submitButton.disabled = false;
-        submitButton.textContent = 'Crea Tema Completo';
-        return;
-    }
-
-    // Raccogliamo tutti i file da tutti gli input
-    const wallpaperFiles = Array.from(wallpapersInput.files);
-    const ringtoneFiles = Array.from(ringtonesInput.files);
-    const notificationFiles = Array.from(notificationsInput.files);
-
-    const allFilesToUpload = [
-        ...wallpaperFiles.map(file => ({ file, path: 'images' })),
-        ...ringtoneFiles.map(file => ({ file, path: 'audio/ringtones' })),
-        ...notificationFiles.map(file => ({ file, path: 'audio/notifications' }))
-    ];
-
-    if (allFilesToUpload.length === 0) {
-        uploadStatus.textContent = 'Per favore, seleziona almeno un file da caricare.';
-        submitButton.disabled = false;
-        submitButton.textContent = 'Crea Tema Completo';
-        return;
-    }
-
-    // --- Gestione dell'upload multiplo ---
-    const totalFiles = allFilesToUpload.length;
-    let uploadedFiles = 0;
-    const uploadedFileNames = {
-        wallpapers: [],
-        ringtones: [],
-        notifications: []
-    };
-
-    // Usiamo Promise.all per aspettare che tutti gli upload siano finiti
     try {
-        const uploadPromises = allFilesToUpload.map(fileObject => {
-            return uploadFile(fileObject.file, fileObject.path).then(fileName => {
-                uploadedFiles++;
-                // Aggiorniamo lo stato
-                uploadStatus.textContent = `Caricato file ${uploadedFiles} di ${totalFiles}...`;
-                progressBar.style.width = (uploadedFiles / totalFiles) * 100 + '%';
-                
-                // Salviamo i nomi dei file per il prossimo step
-                if (fileObject.path === 'images') {
-                    uploadedFileNames.wallpapers.push(fileName);
-                } else if (fileObject.path === 'audio/ringtones') {
-                    uploadedFileNames.ringtones.push(fileName);
-                } else {
-                    uploadedFileNames.notifications.push(fileName);
-                }
-            });
-        });
+        // --- 1. UPLOAD DI TUTTI I FILE ---
+        const allFilesToUpload = [
+            ...Array.from(wallpapersInput.files).map(file => ({ file, path: 'images' })),
+            ...Array.from(ringtonesInput.files).map(file => ({ file, path: 'audio/ringtones' })),
+            ...Array.from(notificationsInput.files).map(file => ({ file, path: 'audio/notifications' }))
+        ];
 
+        if (allFilesToUpload.length === 0) throw new Error("Seleziona almeno un file.");
+        
+        const uploadPromises = allFilesToUpload.map(fo => storage.ref(`${fo.path}/${fo.file.name}`).put(fo.file));
         await Promise.all(uploadPromises);
+        uploadStatus.textContent = 'File caricati. In attesa dell\'elaborazione delle immagini...';
+        progressBar.style.width = '50%';
+        
+        // --- 2. PREPARAZIONE DATI PER FIRESTORE ---
+        // Attende che l'estensione crei i file e poi recupera gli URL
+        
+        const wallpapers = await Promise.all(Array.from(wallpapersInput.files).map(getWallpaperAsset));
+        const callRingtones = await Promise.all(Array.from(ringtonesInput.files).map(file => getAudioAsset(file, 'ringtones')));
+        const notificationSounds = await Promise.all(Array.from(notificationsInput.files).map(file => getAudioAsset(file, 'notifications')));
 
-        // Se arriviamo qui, tutti gli upload sono completati
-        uploadStatus.textContent = 'Tutti i file sono stati caricati con successo!';
-        console.log("Riepilogo dei file caricati:", uploadedFileNames);
-        console.log("Dati del tema:", { name: themeName, category: themeCategory });
+        // --- 3. CREAZIONE DEL DOCUMENTO ---
+        uploadStatus.textContent = 'Creazione del tema su Firestore...';
+        
+        const themeDocument = {
+            name: themeNameInput.value,
+            category: themeCategoryInput.value,
+            wallpapers,
+            callRingtones,
+            notificationSounds,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        };
 
-        // **PROSSIMO STEP (che implementeremo dopo):**
-        // Qui chiameremo la nostra Cloud Function HTTP inviandole i dati del tema
-        // e la lista dei nomi dei file (uploadedFileNames).
+        const docRef = await firestore.collection("themes").add(themeDocument);
+        
+        progressBar.style.width = '100%';
+        uploadStatus.textContent = `TEMA CREATO CON SUCCESSO! ID: ${docRef.id}`;
+        console.log("Documento creato:", themeDocument);
 
     } catch (error) {
-        console.error("Si è verificato un errore durante l'upload:", error);
+        console.error("ERRORE FINALE:", error);
         uploadStatus.textContent = `Errore: ${error.message}`;
         progressBar.style.backgroundColor = 'red';
     } finally {
-        // Riabilita il pulsante alla fine del processo
         submitButton.disabled = false;
         submitButton.textContent = 'Crea Tema Completo';
     }
 });
 
+// Funzione che attende la creazione delle immagini ridimensionate e ne recupera gli URL
+async function getWallpaperAsset(originalFile) {
+    const baseName = originalFile.name.substring(0, originalFile.name.lastIndexOf('.'));
+    const resizedPaths = {
+        fullUrl: `images/${baseName}_1080x1920.webp`,
+        mediumUrl: `images/${baseName}_800x1280.webp`,
+        thumbnailUrl: `images/${baseName}_300x300.webp`,
+    };
 
-// Funzione helper che gestisce l'upload di un singolo file e restituisce una Promise
-function uploadFile(file, path) {
-    return new Promise((resolve, reject) => {
-        const storageRef = storage.ref(`${path}/${file.name}`);
-        const uploadTask = storageRef.put(file);
-
-        uploadTask.on('state_changed',
-            null, // Non gestiamo il progresso qui, ma nel "then" della promise
-            (error) => {
-                // Errore
-                reject(error);
-            },
-            () => {
-                // Successo
-                // Restituiamo il nome del file originale per il nostro riepilogo
-                resolve(file.name);
+    const asset = {};
+    // Prova a recuperare gli URL per un massimo di 30 secondi
+    for (const key in resizedPaths) {
+        const path = resizedPaths[key];
+        let urlFound = false;
+        for (let i = 0; i < 15; i++) { // 15 tentativi x 2 secondi = 30 secondi
+            try {
+                asset[key] = await storage.ref(path).getDownloadURL();
+                console.log(`URL trovato per ${path}`);
+                urlFound = true;
+                break;
+            } catch (e) {
+                console.log(`In attesa di ${path}... (tentativo ${i + 1})`);
+                await sleep(2000); // Aspetta 2 secondi
             }
-        );
-    });
+        }
+        if (!urlFound) throw new Error(`Timeout: impossibile trovare l'immagine processata ${path}`);
+    }
+    return asset;
+}
+
+// Funzione che recupera l'URL di un file audio
+async function getAudioAsset(file, type) {
+    const path = `audio/${type}/${file.name}`;
+    const url = await storage.ref(path).getDownloadURL();
+    return {
+        name: file.name.substring(0, file.name.lastIndexOf('.')).replace(/[_-]/g, ' '),
+        url: url
+    };
 }
